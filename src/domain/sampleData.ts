@@ -12,6 +12,7 @@ export function buildSampleAttendance(today: Date): AttendanceRecord[] {
     return Array.from({ length: daysInWeek }, (_, dayOffset) => ({
       date: toIsoDate(addDays(weekStart, dayOffset)),
       inOffice: true,
+      source: 'manual' as const,
     }))
   })
 }

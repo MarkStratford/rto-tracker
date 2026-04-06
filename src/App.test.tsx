@@ -7,28 +7,35 @@ describe('App', () => {
     window.localStorage.clear()
   })
 
-  it('updates the dashboard when the target toggle changes', () => {
+  it('renders the compact tracker header and progress view', () => {
     render(<App />)
 
-    expect(screen.getByText(/20 day target/i)).toHaveClass('active')
-    fireEvent.click(screen.getByText(/24 day target/i))
-
-    expect(screen.getByText(/24 day target/i)).toHaveClass('active')
+    expect(screen.getByText(/RTO Tracker/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/Forecast/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Weekly breakdown/i)).toBeInTheDocument()
   })
 
-  it('logs an office day through quick add and updates the recent list', () => {
+  it('updates the target pill selection', () => {
     render(<App />)
 
-    fireEvent.click(screen.getByText(/Mark in office/i))
+    fireEvent.click(screen.getByRole('button', { name: /0\/20 days/i }))
 
-    expect(screen.queryByText(/No badge days logged yet./i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /0\/20 days/i })).toHaveClass('active')
   })
 
-  it('shows the sample data and renders week status labels', () => {
+  it('toggles a day directly from the month calendar', () => {
     render(<App />)
 
-    fireEvent.click(screen.getAllByText(/Load sample pattern/i)[0])
+    fireEvent.click(screen.getAllByRole('button', { pressed: false })[0])
 
-    expect(screen.getAllByText(/no-value|locked|maintain|sprint/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { pressed: true }).length).toBeGreaterThan(0)
+  })
+
+  it('loads demo data into the compact tracker', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByText(/Load demo/i))
+
+    expect(screen.getByText(/26\/24 days/i)).toBeInTheDocument()
   })
 })

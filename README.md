@@ -1,73 +1,64 @@
-# React + TypeScript + Vite
+# RTO Compliance Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A local-first React app for tracking return-to-office compliance under a rolling "best 8 of 12 weeks" rule.
 
-Currently, two official plugins are available:
+## What it does
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Tracks manual in-office attendance in browser `localStorage`
+- Calculates your real current compliance using the trailing 12 weeks ending in the current week
+- Supports both `20`-day and `24`-day targets
+- Separates:
+  - actual current compliance
+  - forward planning scenarios
+- Shows which weeks are currently counted, dropped, or best sprint candidates
+- Keeps attendance records ready for future badge import by storing a `source` field on each record
 
-## React Compiler
+## Product model
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Current status
 
-## Expanding the ESLint configuration
+The top section always answers the real present-tense question: are you green in the trailing 12-week window right now?
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Forward planner
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+The planner simulates future value over a selected horizon without changing the meaning of the current score. It exists to answer "what is the fewest additional badge days I need?" and "which weeks matter most next?"
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Attendance model
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Attendance records are stored as:
+
+`AttendanceRecord { date: string; inOffice: boolean; source: 'manual' | 'imported' }`
+
+The current app only writes `manual` records, but the data model is prepared for future badge-data ingestion.
+
+## Development
+
+Install dependencies:
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Run the app:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Build production assets:
+
+```bash
+npm run build
+```
+
+## Notes
+
+- Weeks are Monday through Sunday.
+- Only the top 8 weeks inside a 12-week window count.
+- The app is optimized for personal decision support, not employer-facing reporting.

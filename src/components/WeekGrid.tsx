@@ -1,47 +1,57 @@
 import { formatWeekLabel } from '../lib/date'
-import type { RollingWindowAnalysis } from '../types'
+import type { AnalyzedWeek } from '../types'
 
 interface WeekGridProps {
-  analysis: RollingWindowAnalysis
+  title: string
+  subtitle: string
+  weeks: AnalyzedWeek[]
 }
 
-export function WeekGrid({ analysis }: WeekGridProps) {
+export function WeekGrid({ title, subtitle, weeks }: WeekGridProps) {
   return (
-    <div className="week-grid">
-      {analysis.weeks.map((week) => (
-        <article
-          key={week.weekStart}
-          className={[
-            'week-card',
-            week.isCounted ? 'counted' : 'dropped',
-            week.isSprintWeek ? 'sprint' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        >
-          <div className="week-card-top">
-            <p>{formatWeekLabel(week.weekStart, week.weekEnd)}</p>
-            <span className={`status-chip ${week.leverageLabel}`}>{week.leverageLabel}</span>
-          </div>
+    <section>
+      <div className="panel-heading week-grid-heading">
+        <div>
+          <p className="section-kicker">{title}</p>
+          <h2>{subtitle}</h2>
+        </div>
+      </div>
 
-          <div className="week-metric-row">
-            <div>
-              <span className="metric-label">Badge days</span>
-              <strong>{week.totalDays}</strong>
+      <div className="week-grid">
+        {weeks.map((week) => (
+          <article
+            key={week.weekStart}
+            className={[
+              'week-card',
+              week.explanation.state,
+              week.phase,
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            <div className="week-card-top">
+              <p>{formatWeekLabel(week.weekStart, week.weekEnd)}</p>
+              <span className={`status-chip ${week.explanation.state}`}>
+                {week.explanation.state}
+              </span>
             </div>
-            <div>
-              <span className="metric-label">Still available</span>
-              <strong>{week.remainingCapacity}</strong>
-            </div>
-          </div>
 
-          <p className="week-footnote">
-            {week.isCounted
-              ? 'Counts toward your best 8 right now.'
-              : 'Currently a no-value week unless it climbs into the counted set.'}
-          </p>
-        </article>
-      ))}
-    </div>
+            <div className="week-metric-row">
+              <div>
+                <span className="metric-label">Badge days</span>
+                <strong>{week.totalDays}</strong>
+              </div>
+              <div>
+                <span className="metric-label">Open weekdays</span>
+                <strong>{week.remainingCapacity}</strong>
+              </div>
+            </div>
+
+            <p className="week-phase">{week.phase}</p>
+            <p className="week-footnote">{week.explanation.reason}</p>
+          </article>
+        ))}
+      </div>
+    </section>
   )
 }

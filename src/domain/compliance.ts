@@ -9,36 +9,28 @@ import {
   toIsoDate,
 } from '../lib/date'
 import type {
+  AnalyzedWeek,
   AttendanceRecord,
   ComplianceCalculator,
   ComplianceTarget,
-  EvaluatedWeek,
-  RollingWindowAnalysis,
+  CurrentWindowAnalysis,
+  WeekExplanation,
+  WeekPhase,
   WeeklyAttendance,
 } from '../types'
 
 const WINDOW_WEEKS = 12
 const COUNTED_WEEKS = 8
 
-interface WeekModel extends WeeklyAttendance {
-  remainingCapacity: number
-}
+export interface WeekModel extends WeeklyAttendance {}
 
-interface ComboEvaluation {
-  indexes: number[]
-  baseTotal: number
-  capacity: number
-  minimumDays: number
-  reachableTotal: number
-}
-
-export function analyzeRollingWindow(
+export function analyzeCurrentWindow(
   records: AttendanceRecord[],
   target: ComplianceTarget,
-  windowEndDate: Date,
   today = new Date(),
-): RollingWindowAnalysis {
-  const weeks = buildWeeklyAttendance(records, windowEndDate, today)
+): CurrentWindowAnalysis {
+  const windowEnd = endOfWeekMonday(today)
+  const weeks = buildWeeklyAttendance(records, windowEnd, today)
   const countedWeekIndexes = selectBestWeekIndexes(weeks)
   const droppedWeekIndexes = weeks
     .map((_, index) => index)
@@ -47,41 +39,25 @@ export function analyzeRollingWindow(
     (sum, index) => sum + weeks[index].totalDays,
     0,
   )
-  const totalRemainingCapacity = weeks.reduce(
-    (sum, week) => sum + week.remainingCapacity,
-    0,
-  )
-  const optimal = selectOptimalWeeks(weeks, target)
-  const deficit = Math.max(0, target - best8Total)
-  const status = deriveStatus(best8Total, target, optimal, totalRemainingCapacity)
-
-  const evaluatedWeeks: EvaluatedWeek[] = weeks.map((week, index) => ({
-    ...week,
-    isCounted: countedWeekIndexes.includes(index),
-    isDropped: droppedWeekIndexes.includes(index),
-    isSprintWeek: optimal.indexes.includes(index) && week.remainingCapacity > 0,
-    leverageLabel: getLeverageLabel(week, index, countedWeekIndexes, optimal.indexes),
-  }))
+  const currentWeekRemainingCapacity =
+    weeks.find((week) => week.phase === 'current')?.remainingCapacity ?? 0
 
   return {
-    weeks: evaluatedWeeks,
+    weeks: annotateWeeks(weeks, countedWeekIndexes),
     countedWeekIndexes,
     droppedWeekIndexes,
     best8Total,
     target,
-    deficit,
-    status,
-    totalRemainingCapacity,
-    maxReachableTotal: optimal.reachableTotal,
-    optimalWeekIndexes: optimal.indexes,
-    minimumAdditionalDaysNeeded:
-      optimal.minimumDays === Number.POSITIVE_INFINITY ? deficit : optimal.minimumDays,
-    windowEndDate: toIsoDate(windowEndDate),
+    deficit: Math.max(0, target - best8Total),
+    status: best8Total >= target ? 'green' : 'not-green',
+    windowStartDate: weeks[0]?.weekStart ?? toIsoDate(startOfWeekMonday(today)),
+    windowEndDate: weeks.at(-1)?.weekEnd ?? toIsoDate(windowEnd),
+    currentWeekRemainingCapacity,
   }
 }
 
 export const DefaultComplianceCalculator: ComplianceCalculator = {
-  analyze: analyzeRollingWindow,
+  analyzeCurrent: analyzeCurrentWindow,
 }
 
 export function buildWeeklyAttendance(
@@ -98,15 +74,13 @@ export function buildWeeklyAttendance(
   return Array.from({ length: WINDOW_WEEKS }, (_, index) => {
     const weekStart = addDays(firstWeekStart, index * 7)
     const weekEnd = endOfWeekMonday(weekStart)
-    const weekStartIso = toIsoDate(weekStart)
-    const weekEndIso = toIsoDate(weekEnd)
     const totalDays = eachDayInclusive(weekStart, weekEnd).filter((day) =>
       attendanceByDate.has(toIsoDate(day)),
     ).length
 
     return {
-      weekStart: weekStartIso,
-      weekEnd: weekEndIso,
+      weekStart: toIsoDate(weekStart),
+      weekEnd: toIsoDate(weekEnd),
       totalDays,
       isComplete: compareDates(today, weekEnd) > 0,
       remainingCapacity: countRemainingCapacity(
@@ -115,6 +89,7 @@ export function buildWeeklyAttendance(
         attendanceByDate,
         today,
       ),
+      phase: getWeekPhase(weekStart, weekEnd, today),
     }
   })
 }
@@ -138,13 +113,18 @@ export function selectBestWeekIndexes(weeks: WeeklyAttendance[]): number[] {
     .sort((left, right) => left - right)
 }
 
+export function computeBest8Total(weeks: WeeklyAttendance[]): number {
+  return selectBestWeekIndexes(weeks).reduce((sum, index) => sum + weeks[index].totalDays, 0)
+}
+
 function countRemainingCapacity(
   weekStart: Date,
   weekEnd: Date,
   attendanceByDate: Set<string>,
   today: Date,
 ): number {
-  const firstEligible = compareDates(today, weekStart) > 0 ? startOfDay(today) : weekStart
+  const todayStart = startOfDay(today)
+  const firstEligible = compareDates(todayStart, weekStart) > 0 ? todayStart : weekStart
 
   if (compareDates(firstEligible, weekEnd) > 0) {
     return 0
@@ -156,122 +136,64 @@ function countRemainingCapacity(
   }).length
 }
 
-function selectOptimalWeeks(weeks: WeekModel[], target: ComplianceTarget): ComboEvaluation {
-  const combinations = buildEightWeekCombinations(weeks.length)
-  let best: ComboEvaluation | null = null
-
-  combinations.forEach((indexes) => {
-    const baseTotal = indexes.reduce((sum, index) => sum + weeks[index].totalDays, 0)
-    const capacity = indexes.reduce(
-      (sum, index) => sum + weeks[index].remainingCapacity,
-      0,
-    )
-    const reachableTotal = baseTotal + capacity
-    const minimumDays =
-      reachableTotal >= target ? Math.max(0, target - baseTotal) : Number.POSITIVE_INFINITY
-    const evaluation: ComboEvaluation = {
-      indexes,
-      baseTotal,
-      capacity,
-      minimumDays,
-      reachableTotal,
-    }
-
-    if (!best || isBetterCombo(evaluation, best)) {
-      best = evaluation
-    }
-  })
-
-  return best ?? {
-    indexes: [],
-    baseTotal: 0,
-    capacity: 0,
-    minimumDays: Number.POSITIVE_INFINITY,
-    reachableTotal: 0,
+function getWeekPhase(weekStart: Date, weekEnd: Date, today: Date): WeekPhase {
+  if (compareDates(today, weekStart) < 0) {
+    return 'future'
   }
+
+  if (compareDates(today, weekEnd) > 0) {
+    return 'past'
+  }
+
+  return 'current'
 }
 
-function isBetterCombo(candidate: ComboEvaluation, current: ComboEvaluation): boolean {
-  const candidateReachable = candidate.minimumDays !== Number.POSITIVE_INFINITY
-  const currentReachable = current.minimumDays !== Number.POSITIVE_INFINITY
-
-  if (candidateReachable && !currentReachable) {
-    return true
-  }
-
-  if (!candidateReachable && currentReachable) {
-    return false
-  }
-
-  if (candidate.minimumDays !== current.minimumDays) {
-    return candidate.minimumDays < current.minimumDays
-  }
-
-  if (candidate.reachableTotal !== current.reachableTotal) {
-    return candidate.reachableTotal > current.reachableTotal
-  }
-
-  if (candidate.baseTotal !== current.baseTotal) {
-    return candidate.baseTotal > current.baseTotal
-  }
-
-  return candidate.indexes.join(',') > current.indexes.join(',')
-}
-
-function buildEightWeekCombinations(weekCount: number): number[][] {
-  const result: number[][] = []
-
-  const pick = (start: number, current: number[]) => {
-    if (current.length === COUNTED_WEEKS) {
-      result.push([...current])
-      return
-    }
-
-    for (let index = start; index < weekCount; index += 1) {
-      current.push(index)
-      pick(index + 1, current)
-      current.pop()
-    }
-  }
-
-  pick(0, [])
-  return result
-}
-
-function deriveStatus(
-  best8Total: number,
-  target: ComplianceTarget,
-  optimal: ComboEvaluation,
-  totalRemainingCapacity: number,
-): RollingWindowAnalysis['status'] {
-  if (best8Total >= target) {
-    return 'green'
-  }
-
-  if (optimal.reachableTotal < target) {
-    return 'unreachable'
-  }
-
-  if (optimal.minimumDays > Math.max(2, Math.floor(totalRemainingCapacity / 2))) {
-    return 'at-risk'
-  }
-
-  return 'not-green'
-}
-
-function getLeverageLabel(
-  week: WeekModel,
-  index: number,
+export function annotateWeeks(
+  weeks: WeekModel[],
   countedWeekIndexes: number[],
-  optimalWeekIndexes: number[],
-): EvaluatedWeek['leverageLabel'] {
-  if (optimalWeekIndexes.includes(index) && week.remainingCapacity > 0) {
-    return 'sprint'
+  candidateWeekIndexes: number[] = [],
+): AnalyzedWeek[] {
+  return weeks.map((week, index) => ({
+    ...week,
+    isCounted: countedWeekIndexes.includes(index),
+    explanation: getWeekExplanation(
+      week,
+      countedWeekIndexes.includes(index),
+      candidateWeekIndexes.includes(index),
+    ),
+  }))
+}
+
+function getWeekExplanation(
+  week: WeekModel,
+  isCounted: boolean,
+  isCandidate: boolean,
+): WeekExplanation {
+  if (isCandidate && week.remainingCapacity > 0) {
+    return {
+      state: 'candidate',
+      reason:
+        week.phase === 'future'
+          ? 'Best sprint candidate in the forward planner.'
+          : 'Best sprint candidate if you add another office day.',
+    }
   }
 
-  if (countedWeekIndexes.includes(index)) {
-    return week.remainingCapacity > 0 ? 'maintain' : 'locked'
+  if (isCounted) {
+    return {
+      state: 'counted',
+      reason:
+        week.phase === 'current'
+          ? 'Counting now, and still open this week.'
+          : 'Counting now in your best 8.',
+    }
   }
 
-  return 'no-value'
+  return {
+    state: 'dropped',
+    reason:
+      week.phase === 'future'
+        ? 'Currently outside the counted set until planning adds value.'
+        : 'Currently dropped from your best 8.',
+  }
 }

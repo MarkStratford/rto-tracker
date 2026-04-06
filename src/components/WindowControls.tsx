@@ -1,51 +1,30 @@
-import { addDays, endOfWeekMonday, startOfWeekMonday, toIsoDate } from '../lib/date'
-
 interface WindowControlsProps {
-  windowEndDate: string
-  onWindowEndDateChange: (value: string) => void
+  horizonWeeks: number
+  onHorizonWeeksChange: (value: number) => void
 }
 
-export function WindowControls({
-  windowEndDate,
-  onWindowEndDateChange,
-}: WindowControlsProps) {
-  const current = new Date(windowEndDate)
+const HORIZON_OPTIONS = [0, 2, 4, 6, 8]
 
+export function WindowControls({
+  horizonWeeks,
+  onHorizonWeeksChange,
+}: WindowControlsProps) {
   return (
     <div className="window-controls">
-      <button
-        type="button"
-        className="secondary-button"
-        onClick={() =>
-          onWindowEndDateChange(toIsoDate(endOfWeekMonday(addDays(current, -7))))
-        }
-      >
-        Previous week
-      </button>
-
       <div className="date-field">
-        <label htmlFor="window-end-date">Window closes</label>
-        <input
-          id="window-end-date"
-          type="date"
-          value={windowEndDate}
-          min={toIsoDate(startOfWeekMonday(addDays(new Date(), -70)))}
-          max={toIsoDate(endOfWeekMonday(addDays(new Date(), 77)))}
-          onChange={(event) =>
-            onWindowEndDateChange(toIsoDate(endOfWeekMonday(new Date(event.target.value))))
-          }
-        />
+        <label htmlFor="planning-horizon">Forward planning horizon</label>
+        <select
+          id="planning-horizon"
+          value={horizonWeeks}
+          onChange={(event) => onHorizonWeeksChange(Number(event.target.value))}
+        >
+          {HORIZON_OPTIONS.map((value) => (
+            <option key={value} value={value}>
+              {value === 0 ? 'This week only' : `${value} weeks ahead`}
+            </option>
+          ))}
+        </select>
       </div>
-
-      <button
-        type="button"
-        className="secondary-button"
-        onClick={() =>
-          onWindowEndDateChange(toIsoDate(endOfWeekMonday(addDays(current, 7))))
-        }
-      >
-        Next week
-      </button>
     </div>
   )
 }

@@ -1,15 +1,14 @@
 import { formatShortDate } from '../lib/date'
-import type { ForecastPlan, RollingWindowAnalysis } from '../types'
+import type { ForwardPlanScenario } from '../types'
 
 interface ForecastPlansProps {
-  analysis: RollingWindowAnalysis
-  plans: ForecastPlan[]
+  scenario: ForwardPlanScenario
 }
 
-export function ForecastPlans({ analysis, plans }: ForecastPlansProps) {
+export function ForecastPlans({ scenario }: ForecastPlansProps) {
   return (
     <div className="plan-stack">
-      {plans.map((plan) => (
+      {scenario.plans.map((plan) => (
         <article key={plan.type} className="plan-card">
           <div className="plan-card-top">
             <div>
@@ -24,8 +23,7 @@ export function ForecastPlans({ analysis, plans }: ForecastPlansProps) {
               {plan.weekSuggestions.map((suggestion) => (
                 <li key={`${plan.type}-${suggestion.weekStart}`}>
                   <span>
-                    Week of {formatShortDate(suggestion.weekStart)}: add{' '}
-                    {suggestion.recommendedDays}
+                    Week of {formatShortDate(suggestion.weekStart)}: add {suggestion.recommendedDays}
                   </span>
                   <p>{suggestion.reason}</p>
                 </li>
@@ -33,9 +31,9 @@ export function ForecastPlans({ analysis, plans }: ForecastPlansProps) {
             </ul>
           ) : (
             <p className="plan-empty">
-              {analysis.status === 'green'
-                ? 'No sprint required in this window.'
-                : 'No additional combination of remaining weekdays can reach the target before this window closes.'}
+              {scenario.status === 'green'
+                ? 'This horizon is already green without extra planning.'
+                : 'No combination of remaining weekdays reaches the target in this horizon.'}
             </p>
           )}
         </article>

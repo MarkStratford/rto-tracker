@@ -1,8 +1,11 @@
 export type ComplianceTarget = 20 | 24
+export type AttendanceSource = 'manual' | 'imported'
+export type WeekPhase = 'past' | 'current' | 'future'
 
 export interface AttendanceRecord {
   date: string
   inOffice: boolean
+  source: AttendanceSource
 }
 
 export interface WeeklyAttendance {
@@ -10,14 +13,18 @@ export interface WeeklyAttendance {
   weekEnd: string
   totalDays: number
   isComplete: boolean
+  remainingCapacity: number
+  phase: WeekPhase
 }
 
-export interface EvaluatedWeek extends WeeklyAttendance {
-  remainingCapacity: number
+export interface WeekExplanation {
+  state: 'counted' | 'dropped' | 'candidate'
+  reason: string
+}
+
+export interface AnalyzedWeek extends WeeklyAttendance {
   isCounted: boolean
-  isDropped: boolean
-  isSprintWeek: boolean
-  leverageLabel: 'locked' | 'maintain' | 'sprint' | 'no-value'
+  explanation: WeekExplanation
 }
 
 export interface WeekSuggestion {
@@ -34,19 +41,42 @@ export interface ForecastPlan {
   weekSuggestions: WeekSuggestion[]
 }
 
-export interface RollingWindowAnalysis {
-  weeks: EvaluatedWeek[]
+export interface WeekOpportunity {
+  weekStart: string
+  gain: number
+  reason: string
+}
+
+export interface CurrentWindowAnalysis {
+  weeks: AnalyzedWeek[]
   countedWeekIndexes: number[]
   droppedWeekIndexes: number[]
   best8Total: number
   target: ComplianceTarget
   deficit: number
-  status: 'green' | 'at-risk' | 'not-green' | 'unreachable'
-  totalRemainingCapacity: number
-  maxReachableTotal: number
-  optimalWeekIndexes: number[]
-  minimumAdditionalDaysNeeded: number
+  status: 'green' | 'not-green'
+  windowStartDate: string
   windowEndDate: string
+  currentWeekRemainingCapacity: number
+}
+
+export interface PlanningOptions {
+  target: ComplianceTarget
+  horizonWeeks: number
+}
+
+export interface ForwardPlanScenario {
+  weeks: AnalyzedWeek[]
+  target: ComplianceTarget
+  horizonWeeks: number
+  currentBest8Total: number
+  projectedBest8Total: number
+  additionalDaysNeeded: number
+  status: 'green' | 'not-green' | 'unreachable'
+  planningWindowEndDate: string
+  maxReachableTotal: number
+  plans: ForecastPlan[]
+  opportunities: WeekOpportunity[]
 }
 
 export interface AttendanceRepository {
@@ -56,16 +86,19 @@ export interface AttendanceRepository {
 }
 
 export interface ComplianceCalculator {
-  analyze(
+  analyzeCurrent(
     records: AttendanceRecord[],
     target: ComplianceTarget,
-    windowEndDate: Date,
     today?: Date,
-  ): RollingWindowAnalysis
+  ): CurrentWindowAnalysis
 }
 
 export interface ForecastService {
-  buildPlans(analysis: RollingWindowAnalysis): ForecastPlan[]
+  buildScenario(
+    records: AttendanceRecord[],
+    options: PlanningOptions,
+    today?: Date,
+  ): ForwardPlanScenario
 }
 
 export interface BadgeDataProvider<TInput = unknown> {

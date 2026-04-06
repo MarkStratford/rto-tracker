@@ -1,47 +1,37 @@
-import type { RollingWindowAnalysis } from '../types'
+import { formatWeekLabel } from '../lib/date'
+import type { CurrentWindowAnalysis } from '../types'
 
 interface SummaryCardsProps {
-  analysis: RollingWindowAnalysis
-}
-
-const STATUS_COPY: Record<RollingWindowAnalysis['status'], string> = {
-  green: 'Green now',
-  'at-risk': 'Reachable but tight',
-  'not-green': 'Not green yet',
-  unreachable: 'Window cannot recover',
+  analysis: CurrentWindowAnalysis
 }
 
 export function SummaryCards({ analysis }: SummaryCardsProps) {
   return (
     <section className="summary-grid">
       <article className="summary-card emphasis">
-        <p className="summary-label">Current best 8 total</p>
+        <p className="summary-label">Actual current status</p>
         <strong>{analysis.best8Total}</strong>
-        <span>days counted in the selected 12-week window</span>
+        <span>
+          counted days in the real trailing window {formatWeekLabel(analysis.windowStartDate, analysis.windowEndDate)}
+        </span>
       </article>
 
       <article className="summary-card">
-        <p className="summary-label">Needed to hit target</p>
+        <p className="summary-label">Target gap today</p>
         <strong>{analysis.deficit}</strong>
+        <span>days short of the selected {analysis.target}-day target</span>
+      </article>
+
+      <article className="summary-card">
+        <p className="summary-label">Current state</p>
+        <strong>{analysis.status === 'green' ? 'Green now' : 'Not green yet'}</strong>
         <span>
-          {analysis.status === 'unreachable'
-            ? `max reachable is ${analysis.maxReachableTotal}`
-            : `${analysis.minimumAdditionalDaysNeeded} day plan to green`}
+          {analysis.currentWeekRemainingCapacity} open weekdays remain in the current week.
         </span>
       </article>
 
       <article className="summary-card">
-        <p className="summary-label">Status</p>
-        <strong>{STATUS_COPY[analysis.status]}</strong>
-        <span>
-          {analysis.status === 'green'
-            ? 'You already satisfy the selected goal.'
-            : `${analysis.totalRemainingCapacity} open weekdays remain in the selected horizon.`}
-        </span>
-      </article>
-
-      <article className="summary-card">
-        <p className="summary-label">Counted weeks</p>
+        <p className="summary-label">Counted vs dropped</p>
         <strong>8 of 12</strong>
         <span>{analysis.droppedWeekIndexes.length} weeks currently add no value</span>
       </article>

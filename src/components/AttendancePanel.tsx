@@ -1,87 +1,97 @@
+import { addDays, formatMonthYear, parseIsoDate, startOfWeekMonday, toIsoDate } from '../lib/date'
 import type { AttendanceRecord } from '../types'
 
 interface AttendancePanelProps {
   attendance: AttendanceRecord[]
-  quickAddDates: string[]
   selectedDate: string
+  visibleMonth: string
   onSelectedDateChange: (value: string) => void
+  onVisibleMonthChange: (value: string) => void
   onToggleDate: (value: string) => void
-  onLoadSampleData: () => void
-  onClearAttendance: () => void
+}
+
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function startOfMonth(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), 1)
+}
+
+function addMonths(value: Date, amount: number): Date {
+  return new Date(value.getFullYear(), value.getMonth() + amount, 1)
 }
 
 export function AttendancePanel({
   attendance,
-  quickAddDates,
   selectedDate,
+  visibleMonth,
   onSelectedDateChange,
+  onVisibleMonthChange,
   onToggleDate,
-  onLoadSampleData,
-  onClearAttendance,
 }: AttendancePanelProps) {
   const attendanceSet = new Set(attendance.map((record) => record.date))
-  const recentAttendance = [...attendance].sort((left, right) =>
-    right.date.localeCompare(left.date),
-  )
+  const monthDate = startOfMonth(parseIsoDate(visibleMonth))
+  const calendarStart = startOfWeekMonday(monthDate)
+  const days = Array.from({ length: 35 }, (_, index) => addDays(calendarStart, index))
+  const monthValue = monthDate.getMonth()
 
   return (
-    <div className="attendance-panel">
-      <div className="manual-entry">
-        <label htmlFor="attendance-date">Pick a date</label>
-        <input
-          id="attendance-date"
-          type="date"
-          value={selectedDate}
-          onChange={(event) => onSelectedDateChange(event.target.value)}
-        />
-        <button type="button" onClick={() => onToggleDate(selectedDate)}>
-          {attendanceSet.has(selectedDate) ? 'Remove office day' : 'Mark in office'}
+    <section className="calendar-card">
+      <div className="calendar-header">
+        <button
+          type="button"
+          className="calendar-nav"
+          aria-label="Previous month"
+          onClick={() => onVisibleMonthChange(toIsoDate(addMonths(monthDate, -1)))}
+        >
+          &lt;
+        </button>
+        <strong>{formatMonthYear(toIsoDate(monthDate))}</strong>
+        <button
+          type="button"
+          className="calendar-nav"
+          aria-label="Next month"
+          onClick={() => onVisibleMonthChange(toIsoDate(addMonths(monthDate, 1)))}
+        >
+          &gt;
         </button>
       </div>
 
-      <div className="quick-add">
-        <h3>Quick add this week</h3>
-        <div className="quick-add-grid">
-          {quickAddDates.map((date) => (
+      <div className="calendar-grid">
+        {DAY_LABELS.map((label) => (
+          <span key={label} className="calendar-day-label">
+            {label}
+          </span>
+        ))}
+
+        {days.map((day) => {
+          const iso = toIsoDate(day)
+          const inMonth = day.getMonth() === monthValue
+          const active = attendanceSet.has(iso)
+          const selected = iso === selectedDate
+
+          return (
             <button
-              key={date}
-              className={attendanceSet.has(date) ? 'quick-day active' : 'quick-day'}
-              onClick={() => onToggleDate(date)}
+              key={iso}
               type="button"
+              aria-pressed={active}
+              className={[
+                'calendar-cell',
+                inMonth ? 'current-month' : 'outside-month',
+                active ? 'active' : '',
+                selected ? 'selected' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              onClick={() => {
+                onSelectedDateChange(iso)
+                onToggleDate(iso)
+              }}
             >
-              <span>{new Date(date).toLocaleDateString(undefined, { weekday: 'short' })}</span>
-              <strong>
-                {new Date(date).toLocaleDateString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </strong>
+              {day.getDate()}
             </button>
-          ))}
-        </div>
+          )
+        })}
       </div>
-
-      <div className="utility-actions">
-        <button type="button" className="secondary-button" onClick={onLoadSampleData}>
-          Load sample pattern
-        </button>
-        <button type="button" className="secondary-button danger" onClick={onClearAttendance}>
-          Clear all data
-        </button>
-      </div>
-
-      <div className="recent-log">
-        <h3>Recent logged days</h3>
-        {recentAttendance.length > 0 ? (
-          <ul>
-            {recentAttendance.slice(0, 10).map((record) => (
-              <li key={record.date}>{record.date}</li>
-            ))}
-          </ul>
-        ) : (
-          <p>No badge days logged yet.</p>
-        )}
-      </div>
-    </div>
+    </section>
   )
 }

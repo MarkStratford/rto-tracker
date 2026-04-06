@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeRollingWindow, buildWeeklyAttendance, selectBestWeekIndexes } from './compliance'
+import { analyzeCurrentWindow, buildWeeklyAttendance, selectBestWeekIndexes } from './compliance'
 import { addDays, startOfWeekMonday, toIsoDate } from '../lib/date'
 import type { AttendanceRecord } from '../types'
 
@@ -11,10 +11,11 @@ function makeWeekRecords(
   return Array.from({ length: daysInOffice }, (_, index) => ({
     date: toIsoDate(addDays(weekStart, offsets[index])),
     inOffice: true,
+    source: 'manual',
   }))
 }
 
-describe('compliance engine', () => {
+describe('current compliance engine', () => {
   it('builds Monday to Sunday weeks', () => {
     const today = new Date('2026-04-08')
     const weeks = buildWeeklyAttendance([], new Date('2026-04-12'), today)
@@ -29,47 +30,41 @@ describe('compliance engine', () => {
       weekEnd: `2026-01-${String(index + 7).padStart(2, '0')}`,
       totalDays: index < 4 ? 2 : 3,
       isComplete: true,
+      remainingCapacity: 0,
+      phase: 'past' as const,
     }))
 
     expect(selectBestWeekIndexes(weeks)).toEqual([4, 5, 6, 7, 8, 9, 10, 11])
   })
 
-  it('computes best-8 total and the right deficit for the target', () => {
-    const currentWeekStart = startOfWeekMonday(new Date('2026-04-08'))
+  it('keeps the current analysis anchored to the trailing current window', () => {
+    const today = new Date('2026-04-08')
+    const currentWeekStart = startOfWeekMonday(today)
     const oldestWeekStart = addDays(currentWeekStart, -77)
     const weeklyTotals = [1, 2, 3, 0, 4, 2, 1, 5, 3, 2, 4, 1]
     const records = weeklyTotals.flatMap((days, index) =>
       makeWeekRecords(addDays(oldestWeekStart, index * 7), days),
     )
 
-    const analysis = analyzeRollingWindow(
-      records,
-      24,
-      new Date('2026-04-12'),
-      new Date('2026-04-08'),
-    )
+    const analysis = analyzeCurrentWindow(records, 24, today)
 
+    expect(analysis.windowEndDate).toBe('2026-04-12')
     expect(analysis.best8Total).toBe(25)
-    expect(analysis.deficit).toBe(0)
     expect(analysis.status).toBe('green')
   })
 
-  it('marks a target unreachable when remaining weekday capacity cannot close the gap', () => {
-    const currentWeekStart = startOfWeekMonday(new Date('2026-04-08'))
+  it('marks exact-threshold shortfalls as not green yet', () => {
+    const today = new Date('2026-04-08')
+    const currentWeekStart = startOfWeekMonday(today)
     const oldestWeekStart = addDays(currentWeekStart, -77)
     const weeklyTotals = [0, 0, 1, 1, 2, 1, 0, 2, 2, 1, 0, 0]
     const records = weeklyTotals.flatMap((days, index) =>
       makeWeekRecords(addDays(oldestWeekStart, index * 7), days),
     )
 
-    const analysis = analyzeRollingWindow(
-      records,
-      20,
-      new Date('2026-04-12'),
-      new Date('2026-04-11'),
-    )
+    const analysis = analyzeCurrentWindow(records, 20, today)
 
-    expect(analysis.status).toBe('unreachable')
-    expect(analysis.maxReachableTotal).toBeLessThan(20)
+    expect(analysis.status).toBe('not-green')
+    expect(analysis.deficit).toBeGreaterThan(0)
   })
 })

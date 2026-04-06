@@ -1,43 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { AttendancePanel } from './components/AttendancePanel'
-import { ForecastPlans } from './components/ForecastPlans'
-import { SummaryCards } from './components/SummaryCards'
-import { WeekGrid } from './components/WeekGrid'
-import { WindowControls } from './components/WindowControls'
+import { ForecastStrip } from './components/ForecastStrip'
+import { ProgressRing } from './components/ProgressRing'
+import { WeeklyBreakdown } from './components/WeeklyBreakdown'
 import { LocalStorageAttendanceRepository } from './domain/attendance'
-import { analyzeRollingWindow } from './domain/compliance'
-import { buildForecastPlans } from './domain/forecast'
+import { analyzeCurrentWindow } from './domain/compliance'
+import { buildForwardPlanScenario } from './domain/forecast'
 import { buildSampleAttendance } from './domain/sampleData'
-import { addDays, endOfWeekMonday, startOfWeekMonday, toIsoDate } from './lib/date'
+import { formatRangeWithYear, parseIsoDate, toIsoDate } from './lib/date'
 import type { AttendanceRecord, ComplianceTarget } from './types'
 
 const repository = new LocalStorageAttendanceRepository()
 
 function App() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([])
-  const [target, setTarget] = useState<ComplianceTarget>(20)
-  const [windowEndDate, setWindowEndDate] = useState(() =>
-    toIsoDate(endOfWeekMonday(new Date())),
-  )
+  const [target, setTarget] = useState<ComplianceTarget>(24)
   const [selectedDate, setSelectedDate] = useState(() => toIsoDate(new Date()))
+  const [visibleMonth, setVisibleMonth] = useState(() => toIsoDate(new Date()))
+  const [horizonWeeks] = useState(4)
 
   useEffect(() => {
     setAttendance(repository.getAll())
   }, [])
 
   const today = new Date()
-  const analysis = analyzeRollingWindow(
-    attendance,
-    target,
-    new Date(windowEndDate),
-    today,
-  )
-  const forecastPlans = buildForecastPlans(analysis)
-  const currentWeekStart = startOfWeekMonday(today)
-  const quickAddDates = Array.from({ length: 5 }, (_, index) =>
-    toIsoDate(addDays(currentWeekStart, index)),
-  )
+  const currentAnalysis = analyzeCurrentWindow(attendance, target, today)
+  const planningScenario = buildForwardPlanScenario(attendance, { target, horizonWeeks }, today)
 
   const saveAttendance = (nextRecords: AttendanceRecord[]) => {
     repository.saveAll(nextRecords)
@@ -48,134 +37,103 @@ function App() {
     const exists = attendance.some((record) => record.date === date && record.inOffice)
     const nextRecords = exists
       ? attendance.filter((record) => record.date !== date)
-      : repository.upsert(attendance, { date, inOffice: true })
+      : repository.upsert(attendance, { date, inOffice: true, source: 'manual' })
 
     saveAttendance(nextRecords)
-  }
-
-  const clearAttendance = () => {
-    repository.clear()
-    setAttendance([])
   }
 
   const loadSampleData = () => {
     const sample = buildSampleAttendance(today)
     repository.saveAll(sample)
     setAttendance(sample)
+    setVisibleMonth(sample.at(-1)?.date ?? toIsoDate(today))
   }
 
+  const workdaysLeft = planningScenario.weeks.reduce(
+    (sum, week) => sum + week.remainingCapacity,
+    0,
+  )
+  const weeksLeft = Math.max(
+    1,
+    planningScenario.weeks.filter((week) => week.remainingCapacity > 0).length,
+  )
+  const daysPerWeekNeeded = planningScenario.additionalDaysNeeded
+    ? Math.ceil(planningScenario.additionalDaysNeeded / weeksLeft)
+    : 0
+
+  const warning = useMemo(() => {
+    if (planningScenario.status === 'green') {
+      return 'You are on pace. Keep logging days as planned to stay green.'
+    }
+
+    if (planningScenario.status === 'unreachable') {
+      return 'Not enough workdays left to reach target at this pace. Log every remaining workday.'
+    }
+
+    return `You need ${planningScenario.additionalDaysNeeded} more day${planningScenario.additionalDaysNeeded === 1 ? '' : 's'} across the next ${weeksLeft} scoring week${weeksLeft === 1 ? '' : 's'}.`
+  }, [planningScenario.additionalDaysNeeded, planningScenario.status, weeksLeft])
+
+  const visibleMonthDate = parseIsoDate(visibleMonth)
+
   return (
-    <main className="app-shell">
-      <section className="hero-panel">
-        <div>
-          <p className="eyebrow">Return To Office Compliance</p>
-          <h1>See the exact fewest badge days needed to stay green.</h1>
-          <p className="hero-copy">
-            Track your in-office days, inspect the rolling best 8 of 12 weeks,
-            and see which weeks are doing real work versus which ones can safely
-            drop out.
-          </p>
-        </div>
-
-        <div className="hero-actions">
-          <div className="target-toggle" role="group" aria-label="Compliance target">
-            {[20, 24].map((value) => (
-              <button
-                key={value}
-                className={value === target ? 'toggle-pill active' : 'toggle-pill'}
-                onClick={() => setTarget(value as ComplianceTarget)}
-                type="button"
-              >
-                {value} day target
-              </button>
-            ))}
+    <main className="tracker-shell">
+      <section className="tracker-card">
+        <header className="tracker-header">
+          <div>
+            <h1>RTO Tracker</h1>
+            <p>{formatRangeWithYear(currentAnalysis.windowStartDate, currentAnalysis.windowEndDate)}</p>
           </div>
-          <p className="helper-copy">
-            Best 8 of 12 weeks. Only your top 8 weeks count. The other 4 weeks
-            are visualized as no-value weeks.
-          </p>
-        </div>
-      </section>
 
-      <SummaryCards analysis={analysis} />
-
-      <section className="panel-grid">
-        <section className="panel panel-wide">
-          <div className="panel-heading">
-            <div>
-              <p className="section-kicker">Window view</p>
-              <h2>12-week compliance strip</h2>
+          <div className="header-actions">
+            <div className="target-pill" role="group" aria-label="Compliance target">
+              {[20, 24].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={value === target ? 'target-option active' : 'target-option'}
+                  onClick={() => setTarget(value as ComplianceTarget)}
+                >
+                  {currentAnalysis.best8Total}/{value} days
+                </button>
+              ))}
             </div>
-            <WindowControls
-              windowEndDate={windowEndDate}
-              onWindowEndDateChange={setWindowEndDate}
-            />
-          </div>
 
-          <WeekGrid analysis={analysis} />
-        </section>
-
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <p className="section-kicker">Strategies</p>
-              <h2>How to get green</h2>
-            </div>
+            <button type="button" className="demo-link" onClick={loadSampleData}>
+              Load demo
+            </button>
           </div>
-          <ForecastPlans analysis={analysis} plans={forecastPlans} />
-        </section>
-      </section>
+        </header>
 
-      <section className="panel-grid panel-grid-bottom">
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <p className="section-kicker">Manual entry</p>
-              <h2>Log office days</h2>
-            </div>
-          </div>
+        <ProgressRing value={currentAnalysis.best8Total} target={target} />
 
-          <AttendancePanel
-            attendance={attendance}
-            quickAddDates={quickAddDates}
-            selectedDate={selectedDate}
-            onSelectedDateChange={setSelectedDate}
-            onToggleDate={toggleAttendance}
-            onLoadSampleData={loadSampleData}
-            onClearAttendance={clearAttendance}
-          />
-        </section>
+        <ForecastStrip
+          daysRemaining={planningScenario.additionalDaysNeeded}
+          workdaysLeft={workdaysLeft}
+          daysPerWeekNeeded={daysPerWeekNeeded}
+          warning={warning}
+        />
 
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <p className="section-kicker">Reading the dashboard</p>
-              <h2>What matters most</h2>
-            </div>
+        <AttendancePanel
+          attendance={attendance}
+          selectedDate={selectedDate}
+          visibleMonth={toIsoDate(visibleMonthDate)}
+          onSelectedDateChange={setSelectedDate}
+          onVisibleMonthChange={setVisibleMonth}
+          onToggleDate={toggleAttendance}
+        />
+
+        <WeeklyBreakdown analysis={currentAnalysis} />
+
+        <section className="tracker-footer">
+          <div>
+            <p className="section-kicker">Planner note</p>
+            <p className="footer-copy">
+              Forward planning is still calculated behind the scenes for the forecast cards, but the main score above always reflects the real trailing 12-week window.
+            </p>
           </div>
-          <div className="insight-list">
-            <article>
-              <h3>Counted weeks</h3>
-              <p>
-                These are your current top 8 weeks. Improving them can still help
-                if they have future workdays left.
-              </p>
-            </article>
-            <article>
-              <h3>No-value weeks</h3>
-              <p>
-                These 4 weeks are currently dropped from scoring. A sprint only
-                matters if it pushes one of them into the counted set.
-              </p>
-            </article>
-            <article>
-              <h3>Sprint markers</h3>
-              <p>
-                Highlighted weeks are the best places to add future office days
-                before this selected window closes.
-              </p>
-            </article>
-          </div>
+          <button type="button" className="clear-link" onClick={() => saveAttendance([])}>
+            Clear data
+          </button>
         </section>
       </section>
     </main>

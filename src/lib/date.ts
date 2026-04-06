@@ -70,6 +70,30 @@ export function formatWeekLabel(weekStart: string, weekEnd: string): string {
   return `${formatShortDate(weekStart)} - ${formatShortDate(weekEnd)}`
 }
 
+export function formatMonthYear(value: string): string {
+  return parseIsoDate(value).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+export function formatRangeWithYear(start: string, end: string): string {
+  const startDate = parseIsoDate(start)
+  const endDate = parseIsoDate(end)
+
+  const startLabel = startDate.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  })
+  const endLabel = endDate.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+
+  return `${startLabel} - ${endLabel}`
+}
+
 export function daysBetween(start: Date, end: Date): number {
   return Math.round(
     (startOfDay(end).getTime() - startOfDay(start).getTime()) / ONE_DAY_MS,
